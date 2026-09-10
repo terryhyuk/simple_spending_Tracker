@@ -1,101 +1,189 @@
-# 🛠️ Piggy Log – QA & Technical Troubleshooting Log (13+ Cases)
+# 🛠️ Piggy Log – QA & Technical Troubleshooting Log
 
-This log documents the systematic analysis, reproduction, and verification of **13+ critical defect cases** identified during the software development life cycle (SDLC) of **Piggy Log**. It demonstrates a root cause analysis (RCA) approach and cross-platform verification strategies from a **QA Engineer's perspective**.
+This log documents technical issues I encountered while developing and maintaining **Piggy Log**.
+
+Each case includes the issue, root cause, solution, and the main lesson learned from troubleshooting the problem. The cases cover state management, data handling, localization, UI behavior, performance, platform-specific issues, and code refactoring.
 
 ---
 
-## 🔍 SECTION 1: Major Architectural & Logic Defect Cases (Deep Dive)
+## 🔍 Section 1: Major Logic & Data Issues
 
 ### 🐛 #01. State Management & Real-Time UI Synchronization
-* **Context:** 상태 관리 및 실시간 UI 동기화 문제
-* **Symptoms:** When global configurations (such as monthly budget limits or localized currency formats) were altered in the settings menu, the main dashboard and visual charts failed to update immediately. Changes only reflected after a hard application restart.
-* **Root Cause:** Configuration change events were not being propagated down the widget tree because values were calculated exclusively during the initial widget initialization lifecycle (`initState`).
-* **Resolution:** Refactored the state flow architecture from GetX to **Provider** to enforce an explicit data-binding pipeline, reducing implicit dependency bugs while locking global state updates.
-* **QA Verification Perspective:** * Designed regression checks focusing on screen transitions and state retention after deep-nesting navigation.
-  * Verified edge cases by executing rapid, consecutive setup inputs to ensure the UI and state-controllers remained in sync under heavy stress.
+
+**Context:** Global settings were not reflected immediately across the UI.
+
+**Issue:**
+When settings such as the monthly budget or currency format were changed, the dashboard and charts did not update immediately. The changes were only reflected after restarting the application.
+
+**Root Cause:**
+Some values were calculated only during the initial widget loading process. Changes made in the settings were not being propagated to the UI.
+
+**Solution:**
+Implemented reactive state management using **GetX Rx variables** and added update triggers so that dependent UI components could respond when global settings changed.
+
+**Key Takeaway:**
+Changing data and updating the UI are separate processes. State changes need to be explicitly connected to UI updates.
 
 ---
 
-### 📅 #02. Time-Sensitive Data Integrity
-* **Context:** 날짜 기준 로직 충돌 해결
-* **Symptoms:** Selecting specific calendar dates occasionally fetched incorrect financial records, or data from the previous month leaked into the current view during calendar grid navigation.
-* **Root Cause:** A data mismatch occurred between the database and the client application. The local SQLite database stored dates as string formats (`yyyy-MM-dd`), whereas the front-end application compared them using complete runtime `DateTime` objects, introducing time-zone and timestamp evaluation errors.
-* **Resolution:** Standardized and normalized all date-matching queries and validation logic into uniform `yyyy-MM-dd` string literals at the data source layer before parsing to the UI layer.
-* **QA Verification Perspective:**
-  * Formulated a comprehensive boundary value analysis matrix handling data rendering across month-ends, leap years, and specific local time-zone shifts.
-  * Audited SQLite storage snapshots directly to confirm that modified transaction stamps retained strict structural data integrity.
+### 📅 #02. Date-Based Logic Conflicts
+
+**Context:** Inconsistent results when selecting dates in the calendar.
+
+**Issue:**
+Selecting certain dates could display incorrect financial records, especially when navigating between dates or months.
+
+**Root Cause:**
+The database stored dates as strings in `yyyy-MM-dd` format, while the application compared them using complete `DateTime` objects that also contained time information.
+
+**Solution:**
+Standardized date-related comparisons using the same `yyyy-MM-dd` format before using the values in the UI.
+
+**Key Takeaway:**
+Date-related data should use a consistent format when moving between the database and application logic.
 
 ---
 
-### 🗄️ #03. Multi-Entry Architecture Data Integrity Conflict
-* **Context:** 데이터 무결성 유지
-* **Symptoms:** After editing a transaction on the calendar page, the record disappeared completely from the specific category breakdown list view.
-* **Root Cause:** The SQL query in the local `CalendarHandler` was missing the `c_id` (Category ID) column, causing the category attribute to reset to `0` during updates.
-* **Resolution:** Modified the SQL query to fetch all required relational columns (`SELECT *`) and reinforced the object mapping data integrity layers.
-* **QA Verification Perspective:**
-  - Performed cross-page data consistency sweeps across the calendar, dashboard, and category-specific fragments simultaneously post-update.
-  - Assured zero-loss object data persistence on sudden layout terminations during database write operations.
+### 🗄️ #03. Data Integrity Issue During Record Updates
+
+**Context:** A record became disconnected from its category after being edited.
+
+**Issue:**
+After editing a transaction from the calendar page, the record disappeared from the corresponding category list.
+
+**Root Cause:**
+The SQL query used by the calendar data handler did not include the `c_id` (Category ID) column. As a result, the category information was lost during the update process.
+
+**Solution:**
+Updated the query to include the required category information and adjusted the data mapping so that the category ID was preserved.
+
+**Key Takeaway:**
+When the same data can be accessed and modified from multiple screens, all required relational fields must be preserved throughout the data flow.
 
 ---
 
-### 💱 #04. Currency Formatting Presentation Scatter
-* **Context:** 통화 및 포맷팅 로직 일관성 유지
-* **Symptoms:** Currency symbols and number separators were inconsistent across different contextual screens, causing critical user confusion.
-* **Root Cause:** Presentation formatting logic was scattered across multiple separate widgets, leading to partial updates when user preferences changed.
-* **Resolution:** Centralized formatting logic into a dedicated utility class and ensured all widgets retrieve formats from a single source of truth (`SettingsController`).
-* **QA Verification Perspective:**
-  - Tested layout presentation uniformity under varying display languages to ensure symbols aligned correctly with dynamic numbers.
-  - Validated that changing configurations from the deep settings menu instantly triggered updates across all open background pages.
+### 💱 #04. Inconsistent Currency Formatting
+
+**Context:** Currency symbols and number formatting differed between screens.
+
+**Issue:**
+Currency symbols and number formats were not always consistent across different parts of the application.
+
+**Root Cause:**
+Formatting logic was implemented in multiple widgets instead of being handled in one place. This made it possible for different screens to use different formatting behavior.
+
+**Solution:**
+Centralized currency formatting in a utility class and connected the formatting behavior to the application's settings.
+
+**Key Takeaway:**
+Shared presentation rules should be centralized to avoid inconsistent behavior across screens.
 
 ---
 
-## 📝 SECTION 2: Structural & Component-Level Defect Logs (Defect Registry)
+## 📝 Section 2: UI, Localization & Component Issues
 
-### 🌐 #05. Localization Layout Breaches
-* **Context:** 다국어 지원 반응형 레이아웃 대응
-* **Defect:** Switching the application locale to English or Japanese caused structural text overflows, component breakage, and clipped buttons, rendering critical UI elements invisible.
-* **Root Cause:** Layout specifications implemented fixed-width framing parameters optimized solely for standard Korean character lengths, preventing dynamic component scaling based on text expansion.
-* **Resolution:** Eradicated fixed dimensions across text containers and integrated dynamic layouts utilizing `Flexible` and `Expanded` architectural widgets to accommodate dynamic text sizes seamlessly.
+### 🌐 #05. Localization Layout Issues
 
----
+**Context:** Supporting multiple languages with different text lengths.
 
-### 📊 #06. Data Visualization Optimization
-* **Context:** 데이터 시각화 최적화 (`fl_chart` & 다크모드)
-* **Defect:** Chart labels were clipped off-screen, and graphs were difficult to read in Dark Mode due to low color contrast.
-* **Root Cause:** Relied too heavily on default library settings without implementing theme-specific color logic or sufficient padding boundaries.
-* **Resolution:** Adjusted chart paddings and applied distinct, high-contrast color palettes for both Light and Dark modes.
+**Issue:**
+When switching the application to English or Japanese, some text became clipped or caused layout problems.
 
----
+**Root Cause:**
+Some layouts used fixed dimensions that were designed around Korean text lengths. Longer translated strings did not fit within those fixed areas.
 
-### 🏗️ #07. Component Refactoring Integrity Breakdown
-* **Context:** 구성 요소 리팩토링 과정의 구조적 무결성
-* **Defect:** Features stopped working or data flows became broken during the process of refactoring and isolating monolithic widgets into modular components.
-* **Root Cause:** Widgets held core business logic internally, causing data paths or controller references to be lost when structural elements were separated.
-* **Resolution:** Stabilized architecture by migrating all core logic into Controllers, strictly enforcing the *Separation of Concerns* to limit widgets to pure UI rendering.
+**Solution:**
+Removed unnecessary fixed dimensions and used Flutter layout widgets such as `Flexible` and `Expanded` to allow text and components to adapt to different lengths.
+
+**Key Takeaway:**
+Localization is not only a translation problem. UI layouts also need to accommodate different text lengths.
 
 ---
 
-### 🔋 #08. Background Resource Leaks
-* **Context:** 지속적인 애니메이션 리소스 누수 관리
-* **Defect:** Device temperature spikes and battery drainage increased significantly when the application remained idle or minimized in the background.
-* **Root Cause:** Context-specific shake animations designed for micro-interactions failed to pause when navigating away; the animation controller remained active off-screen, consuming unnecessary CPU processing ticks.
-* **Resolution:** Integrated widget lifecycle management states (`WidgetsBindingObserver`) alongside dynamic tab-index monitoring to explicitly freeze, stop, or dispose of rendering animation tracks whenever the container is obscured.
+### 📊 #06. Chart Readability & Dark Mode
+
+**Context:** Data visualization using `fl_chart`.
+
+**Issue:**
+Some chart labels were clipped, and certain chart elements were difficult to distinguish in Dark Mode.
+
+**Root Cause:**
+The default chart configuration did not provide enough padding for some labels, and the same visual settings were not suitable for both light and dark themes.
+
+**Solution:**
+Adjusted chart spacing and padding and applied different color settings for Light and Dark modes to improve readability.
+
+**Key Takeaway:**
+Data visualization should prioritize readability and contrast rather than relying only on default library settings.
 
 ---
 
-### 🧹 #09. Debugging Build Failures: Naming Conventions & Resource Cleaning
-* **Context:** 디버깅 빌드 실패: 명명 규칙 및 리소스 클리닝
-* **Defect:** Encountered repeated build failures and broken icons on the simulator after adding new icon assets into the project.
-* **Root Cause:** Resource filenames violated Android’s asset naming conventions by containing uppercase letters and invalid special characters, while outdated build artifacts remained cached.
-* **Resolution:** Renamed all assets to follow the strict lowercase and underscore (`snake_case`) convention and executed a thorough `flutter clean` to ensure a fresh build from scratch.
+### 🏗️ #07. Issues During Component Refactoring
+
+**Context:** Separating UI components during refactoring.
+
+**Issue:**
+Some features stopped working correctly after UI components were separated from larger widgets.
+
+**Root Cause:**
+Some business and data-handling logic was located inside widgets. When the widgets were separated, references and data flow between components were also affected.
+
+**Solution:**
+Moved logic out of UI components and reorganized the code so that widgets focused primarily on UI rendering while state and application logic were handled separately.
+
+**Key Takeaway:**
+Separating UI and application logic makes future refactoring and maintenance easier.
 
 ---
 
-### 📱 #10. Strict Platform Requirements for App Icons
-* **Context:** 앱 아이콘 플랫폼 규정 준수 예약어
-* **Defect:** The custom app launcher icon failed to display correctly or caused build configuration crashes when assigned an arbitrary filename like `icon.png`.
-* **Root Cause:** The Android system and `AndroidManifest.xml` expect the main launcher icon asset to follow a specific reserved naming convention (`ic_launcher`). Deviating from this standard caused resource map mismatches.
-* **Resolution:** Renamed the asset configurations to the standard `ic_launcher.png` and explicitly synchronized mapping references inside the XML application blocks.
+### 🔋 #08. Animation Resource Management
+
+**Context:** Continuous animations during tab navigation.
+
+**Issue:**
+A shake animation continued running after navigating away from the screen where it was being displayed.
+
+**Root Cause:**
+The animation controller remained active even when the related widget was no longer visible.
+
+**Solution:**
+Monitored the active tab state and controlled the animation based on whether the corresponding screen was visible. Animation resources were also stopped or disposed of when they were no longer needed.
+
+**Key Takeaway:**
+UI elements that are no longer visible should not continue performing unnecessary work in the background.
+
+---
+
+### 🧹 #09. Build Failures & Resource Naming
+
+**Context:** Android build and resource issues after adding icon assets.
+
+**Issue:**
+The application repeatedly failed to build correctly after new icon resources were added, and some icons did not appear as expected.
+
+**Root Cause:**
+Some resource filenames did not follow Android's resource naming conventions, and stale build artifacts were also affecting the build.
+
+**Solution:**
+Renamed resource files using lowercase and underscore-based naming conventions and ran `flutter clean` before rebuilding the application.
+
+**Key Takeaway:**
+Platform-specific resource naming rules and build caches can cause issues that are unrelated to application logic.
+
+---
+
+### 📱 #10. Android App Icon Resource Configuration
+
+**Context:** Android launcher icon configuration.
+
+**Issue:**
+An application launcher icon did not display correctly when an arbitrary resource name such as `icon.png` was used.
+
+**Root Cause:**
+The Android project configuration referenced the launcher icon using the expected `ic_launcher` resource name. The resource name and the manifest configuration did not match.
+
+**Solution:**
+Updated the icon resource configuration to use the expected launcher resource name and synchronized the reference in `AndroidManifest.xml`.
 
 ```xml
 <application
@@ -105,66 +193,141 @@ This log documents the systematic analysis, reproduction, and verification of **
 </application>
 ```
 
-🪙 #11. Dynamic Locale-Based Currency Formatting
-Context: 통화 계산 로직 예외 처리 / Zero-Decimal Logic
+**Key Takeaway:**
+Platform-specific resource conventions and configuration references need to remain consistent.
 
-Defect: Selecting South Korean Won (KRW) or Japanese Yen (JPY) caused the app to display unnecessary decimal points (e.g., ₩1,000.00 instead of ₩1,000), violating local currency conventions.
+---
 
-Root Cause: The NumberFormat.currency constructor defaulted to the system locale's basic decimal configurations (2 digits) without evaluating specific currency trait parameters.
+## 💰 Section 3: Currency & Localization Logic
 
-Resolution: Implemented dynamic formatting logic to explicitly evaluate the currency code and force decimalDigits to 0 for zero-decimal environments.
+### 🪙 #11. Dynamic Currency Decimal Formatting
+
+**Context:** Different currencies require different decimal precision.
+
+**Issue:**
+KRW and JPY were displayed with unnecessary decimal places, such as `₩1,000.00` instead of `₩1,000`.
+
+**Root Cause:**
+`NumberFormat.currency` was using two decimal places by default instead of considering the selected currency.
+
+**Solution:**
+Added currency-specific logic to determine the number of decimal places.
 
 ```dart
-// [Before] Static formatting regardless of currency type
-currencyFormat = NumberFormat.currency(locale: localeStr, symbol: symbol); // Result: ₩1,200.00
-
-// [After] Dynamic formatting based on currency code
-int decimalDigits = (code == 'KRW' || code == 'JPY') ? 0 : 2;
+// Before
 currencyFormat = NumberFormat.currency(
-  locale: localeStr, 
-  symbol: symbol, 
-  decimalDigits: decimalDigits, // Explicitly control decimal places
-); // Result: ₩1,200
+  locale: localeStr,
+  symbol: symbol,
+);
+
+// After
+int decimalDigits = (code == 'KRW' || code == 'JPY') ? 0 : 2;
+
+currencyFormat = NumberFormat.currency(
+  locale: localeStr,
+  symbol: symbol,
+  decimalDigits: decimalDigits,
+);
 ```
 
-### 🛡️ #12. Runtime Null Safety in Currency Data Mapping
-* **Context:** 런타임 널 안정성
-* **Defect:** The application crashed instantly via a Null Pointer Exception when users selected a newly introduced localization tracking configuration like "Thai Baht (THB)".
-* **Root Cause:** A data map key mismatch occurred where the UI provided an input token that did not exist in the back-end controller asset map yet, causing a crash due to an unsafe `!` (null assertion) operator.
-* **Resolution:** Synchronized the data model matrices and implemented safe null-coalescing mappers (`??`) to guarantee solid fallback paths under structural runtime anomalies.
+**Key Takeaway:**
+Currency formatting should consider the conventions of the selected currency rather than applying one fixed format to every currency.
+
+---
+
+### 🛡️ #12. Runtime Error Caused by Missing Currency Data
+
+**Context:** Adding support for a new currency.
+
+**Issue:**
+Selecting Thai Baht (THB) caused a runtime error.
+
+**Root Cause:**
+THB was available as a UI option, but the corresponding currency data was missing from the currency map. An unsafe null assertion (`!`) then caused the application to fail when the value was not found.
+
+**Solution:**
+Added the missing THB data and used a fallback value with the null-coalescing operator (`??`) to prevent the application from failing when a currency key is unavailable.
 
 ```dart
-// ❌ [BEFORE] Missing data key and unsafe null assertion
-final currencies = { 'USD': {...}, 'KRW': {...} }; 
-final data = currencies[currencyCode]!; // CRASH when currencyCode is 'THB'
-
-// ⭕ [AFTER] Synchronized data map with null safety fallback
-final currencies = { 
-  'USD': {...}, 
-  'THB': {'symbol': '฿', 'code': 'THB'}, 
-  'KRW': {...} 
+// Before
+final currencies = {
+  'USD': {...},
+  'KRW': {...},
 };
-// Robust fallback protection using null-coalescing operator
+
+final data = currencies[currencyCode]!;
+
+// After
+final currencies = {
+  'USD': {...},
+  'THB': {
+    'symbol': '฿',
+    'code': 'THB',
+  },
+  'KRW': {...},
+};
+
 final data = currencies[currencyCode] ?? currencies['USD']!;
 ```
 
-🔀 #13. Structural Refactoring: Ternary to Switch Expressions
-Context: 구조적 개선 및 예외 케이스 처리
+**Key Takeaway:**
+UI options and their underlying data must remain synchronized. Unsafe null assertions can turn missing configuration data into runtime failures.
 
-Defect: As international multi-language variations scaled up (EN, KO, JA, TH), highly nested inline ternary conditional logic became unreadable, chaotic, and heavily error-prone.
+---
 
-Root Cause: Overuse of inline branching operators (? :) for complex multi-case structural routing actions ruined file readability and maintainability.
+### 🔀 #13. Refactoring Nested Ternary Logic
 
-Resolution: Refactored the core localization assignment architectures by adapting modern, flattened Dart switch expressions to ensure smooth system scalability.
+**Context:** Supporting multiple application languages.
 
-Dart
-// [Before] Hard-to-read nested ternary operators
-final String localeStr = lang == 'ko' ? 'ko_KR' : lang == 'ja' ? 'ja_JP' : lang == 'th' ? 'th_TH' : 'en_US';
+**Issue:**
+As the number of supported languages increased, nested ternary expressions became difficult to read and maintain.
 
-// [After] Clean and scalable Switch Expressions (Dart 3.0+)
+**Root Cause:**
+Multiple language conditions were implemented as a single nested ternary expression.
+
+**Solution:**
+Replaced the nested ternary expression with a Dart `switch` expression.
+
+```dart
+// Before
+final String localeStr =
+    lang == 'ko'
+        ? 'ko_KR'
+        : lang == 'ja'
+            ? 'ja_JP'
+            : lang == 'th'
+                ? 'th_TH'
+                : 'en_US';
+
+// After
 final String localeStr = switch (lang) {
   'ko' => 'ko_KR',
   'ja' => 'ja_JP',
   'th' => 'th_TH',
-  _ => 'en_US', 
+  _ => 'en_US',
 };
+```
+
+**Key Takeaway:**
+When conditional logic grows beyond a few simple cases, choosing a clearer control structure can improve readability and reduce maintenance problems.
+
+---
+
+## 📌 Summary
+
+These troubleshooting cases cover several areas of practical application development:
+
+* State management and UI synchronization
+* Date and data consistency
+* SQLite data integrity
+* Shared formatting logic
+* Localization and responsive layouts
+* Data visualization
+* Component refactoring
+* Animation lifecycle management
+* Android resource configuration
+* Currency formatting
+* Runtime null-safety issues
+* Code readability and refactoring
+
+Rather than treating these issues only as test failures, I used them to understand how data, application state, UI components, and platform-specific requirements interact within a real application.
